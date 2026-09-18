@@ -1,0 +1,7 @@
+{
+  "name": "AdBlock VPN",
+  "description": "Ad blocker and privacy shield for Android 15 that stops ads and trackers across games and apps using on-device DNS protection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
