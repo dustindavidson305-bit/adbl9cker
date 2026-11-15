@@ -26,6 +26,12 @@ VPN permission — that's how the filtering works.
 - Blocked domains get an instant NXDOMAIN answer. Everything else is
   resolved through 8.8.8.8 / 1.1.1.1 and answered normally.
 - The Log tab shows every inspected domain, what was blocked, and why.
+- The Log tab's **Ad Beacons** view flags every call your apps make to
+  known ad-network verification/telemetry hosts (UnityAds, AppLovin,
+  Vungle, ironSource, AdMob…) — the pings that report ad impressions,
+  completions and skips back to the network. You can see that a beacon
+  fired, when, and whether it was blocked. What the beacon *reported*
+  travels inside encrypted HTTPS, so no DNS tool can read or rewrite it.
 
 ## Honest limits
 

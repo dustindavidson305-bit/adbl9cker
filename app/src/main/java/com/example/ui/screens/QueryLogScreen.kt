@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DnsQueryLog
 import com.example.ui.LogFilterType
+import com.example.ui.theme.AmberPaused
 import com.example.ui.theme.CardBackground
 import com.example.ui.theme.CardBorder
 import com.example.ui.theme.CyanPrimary
@@ -144,7 +147,9 @@ fun QueryLogScreen(
 
         // Filter chips
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
@@ -184,6 +189,19 @@ fun QueryLogScreen(
                     labelColor = Slate400
                 ),
                 border = BorderStroke(1.dp, if (activeFilter == LogFilterType.ALLOWED_ONLY) EmeraldShield else Slate800)
+            )
+
+            FilterChip(
+                selected = activeFilter == LogFilterType.BEACONS_ONLY,
+                onClick = { onFilterSelected(LogFilterType.BEACONS_ONLY) },
+                label = { Text("Ad Beacons") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = AmberPaused,
+                    selectedLabelColor = Slate900,
+                    containerColor = Slate900,
+                    labelColor = Slate400
+                ),
+                border = BorderStroke(1.dp, if (activeFilter == LogFilterType.BEACONS_ONLY) AmberPaused else Slate800)
             )
         }
 
@@ -281,11 +299,22 @@ fun QueryLogScreen(
                                                 color = if (log.isBlocked) RedBlocked.copy(alpha = 0.8f) else CyanPrimary
                                             )
                                         }
+                                        if (log.beaconLabel != null) {
+                                            Text(
+                                                text = "• Beacon: ${log.beaconLabel}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = AmberPaused
+                                            )
+                                        }
                                     }
                                 }
                             }
 
                             // Action button
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                             if (log.isBlocked) {
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
@@ -312,6 +341,21 @@ fun QueryLogScreen(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
+                            }
+                            if (log.isBeacon) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = AmberPaused.copy(alpha = 0.15f),
+                                    border = BorderStroke(1.dp, AmberPaused.copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = "AD BEACON",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = AmberPaused,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                             }
                         }
                     }

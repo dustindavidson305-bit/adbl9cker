@@ -38,6 +38,7 @@ class AdBlockViewModel : ViewModel() {
                 LogFilterType.ALL -> true
                 LogFilterType.BLOCKED_ONLY -> log.isBlocked
                 LogFilterType.ALLOWED_ONLY -> !log.isBlocked
+                LogFilterType.BEACONS_ONLY -> log.isBeacon
             }
 
             matchesSearch && matchesType
@@ -108,5 +109,6 @@ class AdBlockViewModel : ViewModel() {
 enum class LogFilterType {
     ALL,
     BLOCKED_ONLY,
-    ALLOWED_ONLY
+    ALLOWED_ONLY,
+    BEACONS_ONLY
 }

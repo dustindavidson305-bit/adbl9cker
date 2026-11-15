@@ -262,12 +262,53 @@ object AdBlockRepository {
         return Pair(false, null)
     }
 
+    /**
+     * Known ad-network event / verification hosts. These are the endpoints
+     * apps ping when an ad is loaded, started, finished or verified — the
+     * calls that carry "watched / skipped / completed" reporting back to
+     * the network. At the DNS layer we can see THAT the call happened,
+     * when, and whether it was blocked; the payload itself travels inside
+     * HTTPS and is not visible (or forgeable) from here.
+     */
+    private val beaconHosts = listOf(
+        "unityads.unity3d.com" to "UnityAds",
+        "applovin.com" to "AppLovin",
+        "vungle.com" to "Vungle / Liftoff",
+        "ironsource.com" to "ironSource",
+        "supersonicads.com" to "ironSource",
+        "chartboost.com" to "Chartboost",
+        "admob.com" to "AdMob",
+        "googleads.g.doubleclick.net" to "AdMob / Google Ads",
+        "pagead2.googlesyndication.com" to "Google Ads",
+        "adcolony.com" to "AdColony",
+        "mintegral.com" to "Mintegral",
+        "pangle.io" to "Pangle / TikTok",
+        "tapjoy.com" to "Tapjoy",
+        "inmobi.com" to "InMobi",
+        "fyber.com" to "Fyber / DT",
+        "smaato.com" to "Smaato",
+        "startapp.com" to "StartApp",
+        "graph.facebook.com" to "Meta Audience Network"
+    )
+
+    /** Returns the ad network name if [rawDomain] is a known ad beacon host. */
+    fun classifyBeacon(rawDomain: String): String? {
+        val domain = rawDomain.lowercase(Locale.ROOT).trim().trimEnd('.')
+        for ((host, label) in beaconHosts) {
+            if (matchesDomain(domain, host)) return label
+        }
+        return null
+    }
+
     fun recordQuery(domain: String, isBlocked: Boolean, category: String?) {
+        val beaconLabel = classifyBeacon(domain)
         val newLog = DnsQueryLog(
             domain = domain,
             isBlocked = isBlocked,
             category = category,
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            isBeacon = beaconLabel != null,
+            beaconLabel = beaconLabel
         )
 
         _state.update { current ->

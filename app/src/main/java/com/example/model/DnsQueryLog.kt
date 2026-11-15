@@ -5,5 +5,9 @@ data class DnsQueryLog(
     val domain: String,
     val isBlocked: Boolean,
     val category: String?,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    /** True when this call goes to a known ad-network event/verification host. */
+    val isBeacon: Boolean = false,
+    /** Display name of the ad network the beacon belongs to, e.g. "UnityAds". */
+    val beaconLabel: String? = null
 )
