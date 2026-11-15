@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.AdBlockRepository
 import com.example.ui.AdBlockViewModel
 import com.example.ui.screens.CategoriesScreen
 import com.example.ui.screens.CustomRulesScreen
@@ -92,6 +93,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AdBlockRepository.init(applicationContext)
         enableEdgeToEdge()
 
         setContent {

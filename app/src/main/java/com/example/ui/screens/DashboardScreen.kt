@@ -221,7 +221,7 @@ fun DashboardScreen(
         val savedFormatted = formatBytes(state.estimatedBytesSaved)
         val activeRulesCount = state.categories
             .filter { it.isEnabled }
-            .sumOf { it.domains.size } + state.customBlockedDomains.size
+            .sumOf { it.domains.size } + state.customBlockedDomains.size + state.blocklistSize
 
         Row(
             modifier = Modifier.fillMaxWidth(),

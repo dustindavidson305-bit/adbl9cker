@@ -1,5 +1,8 @@
 package com.example.data
 
+import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
 import com.example.model.DnsQueryLog
 import com.example.model.FilterCategory
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +19,8 @@ data class AdBlockState(
     val categories: List<FilterCategory> = emptyList(),
     val customBlockedDomains: Set<String> = emptySet(),
     val whitelistedDomains: Set<String> = emptySet(),
-    val recentLogs: List<DnsQueryLog> = emptyList()
+    val recentLogs: List<DnsQueryLog> = emptyList(),
+    val blocklistSize: Int = 0
 )
 
 object AdBlockRepository {
@@ -28,7 +32,6 @@ object AdBlockRepository {
             description = "Blocks interstitial, rewarded, and banner ads inside mobile games",
             domains = listOf(
                 "unityads.unity3d.com",
-                "unity3d.com",
                 "applovin.com",
                 "applvn.com",
                 "admob.com",
@@ -53,14 +56,12 @@ object AdBlockRepository {
             name = "Tracking & User Profiling",
             description = "Blocks behavioral trackers, telemetry, and conversion pixels",
             domains = listOf(
-                "facebook.com/tr",
                 "graph.facebook.com",
                 "adjust.com",
                 "appsflyer.com",
                 "branch.io",
                 "crashlytics.com",
                 "flurry.com",
-                "tiktok.com",
                 "bytedance.com",
                 "snssdk.com",
                 "scorecardresearch.com",
@@ -120,25 +121,109 @@ object AdBlockRepository {
     )
     val state: StateFlow<AdBlockState> = _state.asStateFlow()
 
+    // ------------------------------------------------------------------
+    // Persistence + bundled core blocklist
+    // ------------------------------------------------------------------
+
+    private const val TAG = "AdBlockRepository"
+    private const val PREFS_NAME = "adblock_prefs"
+    private const val KEY_CUSTOM_BLOCKED = "custom_blocked"
+    private const val KEY_WHITELISTED = "whitelisted"
+    private const val KEY_DISABLED_CATEGORIES = "disabled_categories"
+    private const val BLOCKLIST_ASSET = "blocklist.txt"
+
+    @Volatile
+    private var prefs: SharedPreferences? = null
+
+    @Volatile
+    private var coreBlocklist: Set<String> = emptySet()
+
+    @Volatile
+    private var initialized = false
+
+    /**
+     * Load persisted rules and the bundled core blocklist. Safe to call
+     * from both the activity and the VPN service; only the first call
+     * does work. The blocklist (77k+ domains from the StevenBlack hosts
+     * project, MIT-licensed) loads on a background thread so startup
+     * never blocks.
+     */
+    @Synchronized
+    fun init(context: Context) {
+        if (initialized) return
+        initialized = true
+        val appContext = context.applicationContext
+        val sp = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs = sp
+
+        val savedBlocked = sp.getStringSet(KEY_CUSTOM_BLOCKED, emptySet()) ?: emptySet()
+        val savedWhitelist = sp.getStringSet(KEY_WHITELISTED, emptySet()) ?: emptySet()
+        val disabledCats = sp.getStringSet(KEY_DISABLED_CATEGORIES, emptySet()) ?: emptySet()
+
+        _state.update { current ->
+            current.copy(
+                customBlockedDomains = savedBlocked.toSet(),
+                whitelistedDomains = savedWhitelist.toSet(),
+                categories = current.categories.map { cat ->
+                    if (cat.id in disabledCats) cat.copy(isEnabled = false) else cat
+                }
+            )
+        }
+
+        Thread({
+            try {
+                val domains = HashSet<String>(90_000)
+                appContext.assets.open(BLOCKLIST_ASSET).bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        val d = line.trim()
+                        if (d.isNotEmpty()) domains.add(d)
+                    }
+                }
+                coreBlocklist = domains
+                _state.update { it.copy(blocklistSize = domains.size) }
+                Log.i(TAG, "Core blocklist loaded: ${domains.size} domains")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load core blocklist", e)
+            }
+        }, "BlocklistLoader").start()
+    }
+
+    private fun persist() {
+        val sp = prefs ?: return
+        val current = _state.value
+        sp.edit()
+            .putStringSet(KEY_CUSTOM_BLOCKED, current.customBlockedDomains)
+            .putStringSet(KEY_WHITELISTED, current.whitelistedDomains)
+            .putStringSet(
+                KEY_DISABLED_CATEGORIES,
+                current.categories.filter { !it.isEnabled }.map { it.id }.toSet()
+            )
+            .apply()
+    }
+
     fun setVpnActive(active: Boolean) {
         _state.update { it.copy(isVpnActive = active) }
     }
 
+    private fun matchesDomain(domain: String, rule: String): Boolean =
+        domain == rule || domain.endsWith(".$rule")
+
     fun isDomainBlocked(rawDomain: String): Pair<Boolean, String?> {
-        val domain = rawDomain.lowercase(Locale.ROOT).trim()
+        val domain = rawDomain.lowercase(Locale.ROOT).trim().trimEnd('.')
+        if (domain.isEmpty()) return Pair(false, null)
 
         val currentState = _state.value
 
         // Check whitelist first
         for (whitelisted in currentState.whitelistedDomains) {
-            if (domain == whitelisted || domain.endsWith(".$whitelisted")) {
+            if (matchesDomain(domain, whitelisted)) {
                 return Pair(false, null)
             }
         }
 
         // Check custom blocked domains
         for (blocked in currentState.customBlockedDomains) {
-            if (domain == blocked || domain.endsWith(".$blocked") || domain.contains(blocked)) {
+            if (matchesDomain(domain, blocked)) {
                 return Pair(true, "Custom Rule")
             }
         }
@@ -147,9 +232,29 @@ object AdBlockRepository {
         for (category in currentState.categories) {
             if (category.isEnabled) {
                 for (adDomain in category.domains) {
-                    if (domain == adDomain || domain.endsWith(".$adDomain") || domain.contains(adDomain)) {
+                    if (matchesDomain(domain, adDomain)) {
                         return Pair(true, category.name)
                     }
+                }
+            }
+        }
+
+        // Check the bundled core blocklist: the domain itself or any
+        // parent domain of it may be listed.
+        val blocklist = coreBlocklist
+        if (blocklist.isNotEmpty()) {
+            var candidate = domain
+            while (true) {
+                if (blocklist.contains(candidate)) {
+                    return Pair(true, "Core Blocklist")
+                }
+                val dot = candidate.indexOf('.')
+                if (dot < 0) break
+                candidate = candidate.substring(dot + 1)
+                // Stop before bare TLDs.
+                if (!candidate.contains('.')) {
+                    if (blocklist.contains(candidate)) return Pair(true, "Core Blocklist")
+                    break
                 }
             }
         }
@@ -188,10 +293,12 @@ object AdBlockRepository {
             }
             current.copy(categories = updated)
         }
+        persist()
     }
 
     fun addCustomBlocked(rawDomain: String): Boolean {
-        val domain = rawDomain.trim().lowercase(Locale.ROOT)
+        val domain = rawDomain.trim().lowercase(Locale.ROOT).trimEnd('.')
+            .removePrefix("https://").removePrefix("http://").substringBefore('/')
         if (domain.isBlank()) return false
         _state.update { current ->
             current.copy(
@@ -199,6 +306,7 @@ object AdBlockRepository {
                 whitelistedDomains = current.whitelistedDomains - domain
             )
         }
+        persist()
         return true
     }
 
@@ -206,10 +314,12 @@ object AdBlockRepository {
         _state.update { current ->
             current.copy(customBlockedDomains = current.customBlockedDomains - domain)
         }
+        persist()
     }
 
     fun addWhitelist(rawDomain: String): Boolean {
-        val domain = rawDomain.trim().lowercase(Locale.ROOT)
+        val domain = rawDomain.trim().lowercase(Locale.ROOT).trimEnd('.')
+            .removePrefix("https://").removePrefix("http://").substringBefore('/')
         if (domain.isBlank()) return false
         _state.update { current ->
             current.copy(
@@ -217,6 +327,7 @@ object AdBlockRepository {
                 customBlockedDomains = current.customBlockedDomains - domain
             )
         }
+        persist()
         return true
     }
 
@@ -224,6 +335,7 @@ object AdBlockRepository {
         _state.update { current ->
             current.copy(whitelistedDomains = current.whitelistedDomains - domain)
         }
+        persist()
     }
 
     fun clearStats() {
