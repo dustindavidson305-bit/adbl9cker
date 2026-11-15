@@ -20,7 +20,9 @@ data class AdBlockState(
     val customBlockedDomains: Set<String> = emptySet(),
     val whitelistedDomains: Set<String> = emptySet(),
     val recentLogs: List<DnsQueryLog> = emptyList(),
-    val blocklistSize: Int = 0
+    val blocklistSize: Int = 0,
+    /** Apps the user excluded: their traffic bypasses the VPN tunnel entirely. */
+    val excludedApps: Set<String> = emptySet()
 )
 
 object AdBlockRepository {
@@ -130,6 +132,7 @@ object AdBlockRepository {
     private const val KEY_CUSTOM_BLOCKED = "custom_blocked"
     private const val KEY_WHITELISTED = "whitelisted"
     private const val KEY_DISABLED_CATEGORIES = "disabled_categories"
+    private const val KEY_EXCLUDED_APPS = "excluded_apps"
     private const val BLOCKLIST_ASSET = "blocklist.txt"
 
     @Volatile
@@ -159,11 +162,13 @@ object AdBlockRepository {
         val savedBlocked = sp.getStringSet(KEY_CUSTOM_BLOCKED, emptySet()) ?: emptySet()
         val savedWhitelist = sp.getStringSet(KEY_WHITELISTED, emptySet()) ?: emptySet()
         val disabledCats = sp.getStringSet(KEY_DISABLED_CATEGORIES, emptySet()) ?: emptySet()
+        val savedExcluded = sp.getStringSet(KEY_EXCLUDED_APPS, emptySet()) ?: emptySet()
 
         _state.update { current ->
             current.copy(
                 customBlockedDomains = savedBlocked.toSet(),
                 whitelistedDomains = savedWhitelist.toSet(),
+                excludedApps = savedExcluded.toSet(),
                 categories = current.categories.map { cat ->
                     if (cat.id in disabledCats) cat.copy(isEnabled = false) else cat
                 }
@@ -188,6 +193,16 @@ object AdBlockRepository {
         }, "BlocklistLoader").start()
     }
 
+    fun toggleExcludedApp(packageName: String, excluded: Boolean) {
+        _state.update { current ->
+            val updated = if (excluded) current.excludedApps + packageName else current.excludedApps - packageName
+            current.copy(excludedApps = updated)
+        }
+        persist()
+    }
+
+    fun getExcludedApps(): Set<String> = _state.value.excludedApps
+
     private fun persist() {
         val sp = prefs ?: return
         val current = _state.value
@@ -198,6 +213,7 @@ object AdBlockRepository {
                 KEY_DISABLED_CATEGORIES,
                 current.categories.filter { !it.isEnabled }.map { it.id }.toSet()
             )
+            .putStringSet(KEY_EXCLUDED_APPS, current.excludedApps)
             .apply()
     }
 

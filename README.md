@@ -33,6 +33,21 @@ VPN permission — that's how the filtering works.
   fired, when, and whether it was blocked. What the beacon *reported*
   travels inside encrypted HTTPS, so no DNS tool can read or rewrite it.
 
+## Modes & quick controls
+
+- **Silent Mode (no VPN):** Android's built-in Private DNS can block ads
+  system-wide with no VPN at all — no status-bar key icon, and no VPN
+  for apps or websites to detect. The Filters tab has copy-tap
+  hostnames (AdGuard / Mullvad) and a button that opens the setting;
+  Android doesn't allow apps to change it directly. Use one mode at a
+  time — the VPN takes over DNS while it runs.
+- **Stealth exclusions:** in the Filters tab you can exclude apps from
+  the tunnel entirely. An excluded app never sees a VPN (useful for
+  banking/streaming apps that dislike VPNs) — and is not filtered.
+- **Quick toggle:** add the **AdBlock** tile to your Quick Settings
+  panel for one-tap on/off, or long-press the app icon and use the
+  "Toggle blocker" shortcut.
+
 ## Honest limits
 
 - DNS filtering can't block ads served from the same domain as the

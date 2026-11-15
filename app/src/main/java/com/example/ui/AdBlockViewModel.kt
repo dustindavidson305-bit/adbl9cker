@@ -6,7 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AdBlockRepository
 import com.example.data.AdBlockState
+import com.example.model.InstalledApp
 import com.example.service.AdBlockVpnService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +50,42 @@ class AdBlockViewModel : ViewModel() {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
+    val installedApps: StateFlow<List<InstalledApp>> = _installedApps
+
+    /** Loads the list of launchable apps once, for the exclusions picker. */
+    fun loadInstalledApps(context: Context) {
+        if (_installedApps.value.isNotEmpty()) return
+        val appContext = context.applicationContext
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val pm = appContext.packageManager
+                val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val resolved = pm.queryIntentActivities(mainIntent, 0)
+                val apps = resolved
+                    .mapNotNull { it.activityInfo?.packageName }
+                    .filter { it != appContext.packageName }
+                    .distinct()
+                    .map { pkg ->
+                        val label = try {
+                            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                        } catch (e: Exception) {
+                            pkg
+                        }
+                        InstalledApp(packageName = pkg, label = label)
+                    }
+                    .sortedBy { it.label.lowercase() }
+                _installedApps.value = apps
+            } catch (e: Exception) {
+                // Leave the list empty; the exclusions UI explains itself.
+            }
+        }
+    }
+
+    fun toggleExcludedApp(packageName: String, excluded: Boolean) {
+        AdBlockRepository.toggleExcludedApp(packageName, excluded)
+    }
 
     fun setSearchFilter(query: String) {
         _searchFilter.value = query

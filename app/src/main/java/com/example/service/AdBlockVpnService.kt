@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
@@ -100,11 +101,22 @@ class AdBlockVpnService : VpnService() {
                 .addRoute("fd00::1", 128)
                 .setMtu(1500)
 
+            // Stealth exclusions: these apps bypass the tunnel completely,
+            // so they never see a VPN at all (and are not filtered).
+            for (pkg in AdBlockRepository.getExcludedApps()) {
+                try {
+                    builder.addDisallowedApplication(pkg)
+                } catch (e: PackageManager.NameNotFoundException) {
+                    Log.w(TAG, "Excluded app not installed, skipping: $pkg")
+                }
+            }
+
             vpnInterface = builder.establish()
 
             if (vpnInterface != null) {
                 isRunning = true
                 AdBlockRepository.setVpnActive(true)
+                AdBlockTileService.requestUpdate(applicationContext)
                 vpnThread = Thread({ runVpnLoop() }, "AdBlockVpnThread").apply { start() }
                 Log.i(TAG, "AdBlock DNS filter established")
             } else {
@@ -439,6 +451,7 @@ class AdBlockVpnService : VpnService() {
     private fun stopVpn() {
         isRunning = false
         AdBlockRepository.setVpnActive(false)
+        AdBlockTileService.requestUpdate(applicationContext)
         try {
             vpnThread?.interrupt()
             vpnInterface?.close()

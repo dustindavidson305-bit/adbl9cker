@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">AdBlock VPN</string>
+    <string name="shortcut_toggle_short">Toggle blocker</string>
+    <string name="shortcut_toggle_long">Turn AdBlock on or off</string>
+    <string name="tile_label">AdBlock</string>
 </resources>
 

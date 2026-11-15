@@ -96,22 +96,31 @@ class MainActivity : ComponentActivity() {
         AdBlockRepository.init(applicationContext)
         enableEdgeToEdge()
 
+        // Launched from the long-press shortcut or the QS tile (when VPN
+        // consent is still needed): toggle protection as soon as we open.
+        val launchToggle = intent?.action == ACTION_TOGGLE
+
         setContent {
             MyApplicationTheme {
-                AdBlockMainApp(viewModel = viewModel)
+                AdBlockMainApp(viewModel = viewModel, launchToggle = launchToggle)
             }
         }
+    }
+
+    companion object {
+        const val ACTION_TOGGLE = "com.aistudio.adblocker.shield.ACTION_TOGGLE"
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdBlockMainApp(viewModel: AdBlockViewModel) {
+fun AdBlockMainApp(viewModel: AdBlockViewModel, launchToggle: Boolean = false) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val searchFilter by viewModel.searchFilter.collectAsStateWithLifecycle()
     val logFilter by viewModel.logFilter.collectAsStateWithLifecycle()
     val filteredLogs by viewModel.filteredLogs.collectAsStateWithLifecycle()
+    val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showInfoDialog by remember { mutableStateOf(false) }
@@ -155,6 +164,16 @@ fun AdBlockMainApp(viewModel: AdBlockViewModel) {
                 viewModel.startVpnService(context)
             }
         }
+    }
+
+    // Shortcut / tile entry point: toggle once on open.
+    androidx.compose.runtime.LaunchedEffect(launchToggle) {
+        if (launchToggle) handleToggleVpn()
+    }
+
+    // Load the app list the first time the Filters tab is opened.
+    androidx.compose.runtime.LaunchedEffect(selectedTab) {
+        if (selectedTab == 1) viewModel.loadInstalledApps(context)
     }
 
     Scaffold(
@@ -351,7 +370,10 @@ fun AdBlockMainApp(viewModel: AdBlockViewModel) {
                 )
                 1 -> CategoriesScreen(
                     categories = uiState.categories,
-                    onToggleCategory = { id, enabled -> viewModel.toggleCategory(id, enabled) }
+                    onToggleCategory = { id, enabled -> viewModel.toggleCategory(id, enabled) },
+                    excludedApps = uiState.excludedApps,
+                    installedApps = installedApps,
+                    onToggleExcludedApp = { pkg, excluded -> viewModel.toggleExcludedApp(pkg, excluded) }
                 )
                 2 -> QueryLogScreen(
                     logs = filteredLogs,
@@ -406,6 +428,9 @@ fun AdBlockMainApp(viewModel: AdBlockViewModel) {
                         text = "• Uses the local Android VpnService TUN interface to route port 53 DNS queries through on-device inspection.\n" +
                                 "• When games or apps request known ad or tracking servers (UnityAds, AppLovin, AdMob, Vungle, etc.), the request is intercepted and dropped locally.\n" +
                                 "• Zero remote proxy servers are used: your browsing and gaming stay 100% private on your device.\n" +
+                                "• Silent Mode (Filters tab): Android's built-in Private DNS blocks ads system-wide with no VPN at all — no VPN icon, nothing for apps to detect.\n" +
+                                "• Stealth exclusions (Filters tab): excluded apps bypass the tunnel entirely, so they never see a VPN. They also aren't filtered.\n" +
+                                "• Quick toggle: add the AdBlock tile to your Quick Settings panel, or long-press the app icon and tap 'Toggle blocker'.\n" +
                                 "• Android 15 Compliant: Declares foregroundServiceType='specialUse' with full system exemption compliance.",
                         style = MaterialTheme.typography.bodySmall.copy(lineHeight = 19.sp),
                         color = Slate400
